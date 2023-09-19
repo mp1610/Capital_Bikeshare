@@ -7,3 +7,5 @@ The datasets used for this project are 'bikeshare_locations' & 'rides_2019_2020_
 
 The goal of this project was to look at the raw data, and obtain 5 interesting research questions (descriptive & exploratory) which can be answered through the data.
 The operationalised research questions are answered by making use of a clean dataset to create several meaningful visualisations which support any evaluations made.
+
+Note: The 'rides_2019_2020_extract' dataset is also used in this project, however cannot be uploaded onto Github due to its size. To run the R code for this project, ensure this dataset is obtained and saved into the 'data' folder. Else, view the html file created which is the final output for the project.
