@@ -1,0 +1,791 @@
+---
+title: "Coursework Submission"
+output:
+  html_document:
+    df_print: paged
+    highlight: textmate
+    toc: true
+    toc_depth: 2
+    number_sections: TRUE
+    
+---
+
+*NOTE TO MARKER:* The rmd file knit can take a long time (up to 3-5 minutes) due to the large data entries. If you want to reduce this, you can convert the chunks 7 and 9 to 'comments' so the knit time will be reduced significantly and will not affect any of the graphs formed. This is because chunks 6 and 8 are used to identify several values from the data set, yet do not directly link to any of the graph formations. 
+Thank you.
+
+```{r echo=FALSE, message=FALSE}
+
+# NOTE FOR MARKER: The document does knit, it just takes 5-10 minutes to process
+# due to the presence of data sets with over a million data entries in them.
+
+library("tidyverse")
+library("here")
+library("lubridate")
+library("readxl")
+library("lintr")
+library("styler")
+library("gapminder")
+library("RColorBrewer")
+library("janitor")
+library("ggrepel")
+library("ggplot2")
+library("ggpubr")
+
+options(scipen = 100, digits = 4)
+
+```
+
+# Introduction
+
+Capital Bikeshare is a bicycle sharing company located predominantly in Washington D.C and neighbouring jurisdictions. With over 500 bikes and 600 stations, Capital Bikeshare present a convenient, cheap, and green method for easy travel around Washington D.C for both locals looking to get around the city, and tourists looking to visit the local attractions.
+
+Capital Bikeshare publicize their system data, presenting several different factors such as duration of trips and which stations these trips occur. This data is available for every day that has passed since the company began and their bikes were initially installed in 2010.
+While this data is easily accessible and may seem relatively insignificant to most people, the data has many key factors that can be used to measure how the company has been performing over time, and what aspects of the business need attention. On top of this, the system data can be ordered to present important findings through which the company can make strategic business decisions moving forward in order to optimise company growth. This shows why the system data is worth studying, as through the data, one can innovate new ideas by looking at current performance (through meaningful visualizations) based on existing business strategies to identify where the company may be lacking and could improve.
+
+# Data
+```{r, echo = FALSE, message = FALSE, warning = FALSE, results = "hide"}
+locations <-
+  read_csv(here("data", "bikeshare_locations.csv")) %>%
+         # na = "N/A") %>%
+  clean_names() # no further cleaning is required as correct datatype is used
+# in each column
+  
+rides_extract <-
+  read_csv(here("data", "rides_2019_2020_extract.csv")) %>%
+         # na = "N/A") %>%
+  clean_names() %>%
+  mutate(duration = parse_double(duration)) %>%
+  # mutate(start_station_id = parse_double(start_station_id)) %>%
+  # mutate(end_station_id = parse_double(end_station_id)) %>%
+  # mutate(start_lat = parse_double(start_lat)) %>%
+  # mutate(start_lat = parse_double(start_lng)) %>%
+  # mutate(start_lat = parse_double(end_lat)) %>%
+  # mutate(start_lat = parse_double(end_lng)) %>%
+  mutate(member_casual = recode(.x = member_casual, "Member" = "member")) %>%
+  mutate(member_casual = recode(.x = member_casual, "Casual" = "casual")) %>%
+  mutate(duration_in_mins = duration / 60) %>% # convert secs to mins
+  filter(duration > 60) # ignore data entries for durations less than a minute
+```
+
+The raw data has been obtained from the Capital Bikeshare website as it is openly accessible information. Under the 'system data' section of the website, Capital Bikeshare provide trip history data, real-time data, expansion plan data, and results of member surveys conducted.
+
+## Rides 2019/2020 Data
+
+The main data set that will be used for this report is the 'rides_2019_2020_extract' which has been renamed as 'rides_extract'. The data comes in a tibble consisting of 17 columns recording data for every bike trip over the years 2019/2020. Recorded data includes 17 different measured parameters such as: trip duration (seconds), start and end datetime for each ride, and the station ID from which each trip occurred and ended. 
+
+While all variables have the potential to present meaningful findings, the following variables have been identified as the most important, therefore will be the core of the study:
+(7 different variables will be studied: 5 from 'rides_extract' and 2 from 'locations')
+
+1. Duration : The length of each trip (recorded in seconds).
+
+2. Start Date: The date and time that a trip began.
+
+3. End Date: The data and time that a trip ended.
+
+4. Member/Casual: Whether the bike user was registered as a member or a casual user (as this affects how much it costs to use a bike)
+
+Note: A member is an individual who has purchased an annual membership, a 30-day membership or a day key membership. A casual ride consists of single trips, 24-hour passes and 3 day passes. This factor is quite significant to the overall data as members obtain perks (such as free 45 minute rides, free unlocking fee, cheaper per-minute rate for e-bikes) which do not apply to casual users, hence data between members and casual riders is likely to differ greatly.
+
+5. Type of bike (electric/docked bike)
+
+The data set (rides_extract) mentioned above has been cleaned to be in a format through which it can be analysed to obtain meaningful results (see code chunk in rmd file). 
+Firstly the 'clean_names()' function is used to format the column names in a way that it can be used within chunks without resulting in errors. 
+Secondly, an additional column was created to present duration of trips in minutes rather than seconds, as this is more convenient, and makes it easier to convey results. In addition, the data type for the 'duration' column was initially set as 'character' which meant that R recognized the column as text rather than numbers. This was also corrected using the parse_double() function to convert the numbers from a 'character' format to a 'number' format for R to process. The same thing has been done for all columns in the data set where the data is a number but is stored as a character.
+The third key error that was corrected in the data set was the alternate spellings of 'member' and 'casual' as they were either spelt with/without a capital letter. This is corrected as the column was re-coded to process both types of spellings as the same output.
+
+Despite being a very comprehensive data set, there are a few minor errors within the data set that could hinder the results, so must be removed. Firstly, there are several values where the duration of the trip is negative, which is not possible considering the end time of a trip will always be after the start time of a trip. On top of this, through the same logic that Capital Bikeshare have used, any trip with a recorded time of less than 60 seconds has also been removed from the data set as it is highly unlikely any user will be using the bike for less than 60 seconds. Values falling below 60 seconds are assumed to be either false starts or users trying to re-dock a bike to ensure it is secure (as CaBi have also made the same assumption on their site). Any duration less than a minute has been removed from the data set (using filter (duration > 60)) as it is essentially 'useless' or 'wrong' data which could mislead the overall findings.
+
+Overall, these omissions resulted in the number of data entries being reduced from approximately 2.8 million to 1.8 million. While this is a large amount of entry removals, it has been justified and will allow for a more accurate, representative analysis of the data.
+
+## Bikeshare Locations Data
+
+Although the focus of this study will be centered around the rides_extract data set, another data set named 'bikeshare_locations' (renamed as 'locations') also presents data, some of which will be used in the study. This data set is also a tibble consisting of 17 columns of different parameters such as: address, number of bikes and number of empty docks. Again, the most important variables from this data set have been identified as:
+
+1. Address
+
+2. Number of bikes
+
+The locations data set has also been cleaned using the clean_names() function. Further cleaning does not seem to be necessary for this data set. However, there is a lot of useless data that cannot be used such as the install and removal dates which are both set at 01/01/1970 (reference point for datetimes) despite the company being formed in 2010. While this 'useless' data will not be removed from the table, it will likely not be used in any further analyses.
+
+# Questions
+
+## Question 1
+
+a) What are the 10 most popular Capital Bikeshare stations for both 'start' and 'end' locations of trips, between the years 2019-2020?
+
+This question has been operationalised as follows:
+
+1. The concept (Station popularity) is being measured as the number of trips that are either starting or ending at the specific location.
+
+2. The question has been given a time frame which is the entire range of the data set (2019-2020).
+
+3. The question only asks for the 10 most popular stations.
+
+b) Plot the latitude and longitude of each station for all recorded trips in 2019.
+
+## Question 2
+
+How did Covid-19 affect the number of trips for months (Jan-Dec) in 2020, and how did this compare to the trip frequency per month in 2019?
+
+This question has been operationalised as follows:
+
+1. The question has been given a timeframe as it measures data in 2019 and 2020 on separate figures.
+
+2. The question considers the change in number of trips between each month within a year, as well as how this differs to the adjacent year.
+
+## Question 3
+
+What was the frequency of members/casual riders who rode a bike for a duration of less than 30 minutes in Jan - Dec of 2019 and 2020?
+
+This question has been operationalised as follows:
+
+1. There are two clear timeframes: Jan-Dec 2019, Jan-Dec 2020.
+
+2. The question asks for frequency of users with a duration of less than 30 minutes (numerical variable specified).
+
+## Question 4
+
+What is the relationship between the type of bike and the average duration of trips in Jan - Dec 2020?
+
+This question has been operationalised as follows:
+
+1. The question has specified the timeframe for the analysis as Jan-Dec 2020.
+
+2. The question considers the average duration (mins) of trips in 2020 between all bike types offered by CaBi, hence having a clear concept and measure.
+
+3. The question specifies that average duration is measured in minutes.
+
+## Question 5
+
+What is the difference between the amount of trips for casual riders between 2019 and 2020, compared to the difference between the amount of trips for membership riders between 2019 and 2020?
+
+This question has been operationalised as follows:
+
+1. The time frame for the analysis has been set between 2019 and 2020 (both presented in separate columns).
+
+2. The question is considering the change in number of trips between 2019 and 2020 for both members and casual riders. This operationalises the question as it invited analyses not only within the type of rider but also between the types of riders.
+
+3. The variable (Number of Trips) has been clearly expressed as a measure for the concept (comparison between casual riders and members, as well as comparison between data for 2019 and 2020).
+
+# Analysis
+## Question 1 Analysis
+
+1a)
+
+The figure below shows the the 10 most popular bike stations located across Washington D.C and the number of trips the were started from each location. It is clear that the most popular start location is Columbus Circle/Union Station with over 20,000 trips starting from this location over the 2 years that the data set has recordings for. This makes complete sense as the bike dock is relatively close to significant tourist locations such as the Washington monument and the Lincoln Memorial. 
+
+The significance of this data is to analyse which locations have more users, hence requiring a possible expansion in the number of bikes and docks at these locations. Currently there are 19 bikes and 32 docks available at this location, however, the data could suggest that due to being such a popular station, implementing an increase in number of bikes and dock spaces will likely facilitate the high (and possibly growing) demand of this station. This same logic can be transferred to all stations in high demand such as the 10 stations in the figure below.
+
+```{r, eval = TRUE, echo = FALSE, results = "hold", warning = FALSE, fig.height = 6, fig.width = 6, fig.show = "hold", fig.align = "center"}
+
+rides_extract %>%
+  select("start_station_name", "duration_in_mins") %>%
+  group_by(start_station_name) %>%
+  count() %>%
+  filter(n > 15000) %>%
+  drop_na(start_station_name) %>%
+  ggplot(mapping = aes(x = start_station_name, y = n, na.rm = TRUE)) +
+  geom_col(colour = "black",
+           alpha = 1,
+           stat = "bin",
+           na.rm = TRUE) +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(
+      angle = 90,
+      hjust = 1,
+      vjust = 0.5
+    )) +
+  labs(
+    x = "Most Popular Start Stations",
+    y = "Number of Trips"
+  ) +
+  scale_y_continuous(breaks = pretty(0:25000))
+```
+
+The figure below presents the 10 most popular bike stations and the number of trips that end at each station. Similar to the figure above, the most popular station over the 2 years (2019/2020) of recorded data is still the Columbus Circle/Union Station. The reason for this analysis and what makes it a meaningful visualisation follows a very similar logic to that for the graph for 'Most popular start locations', as it essentially tracks which locations have higher traffic and demand. Capital Bikeshare can add increased docking due to large number of trips ending at this location.
+
+Alternatively, through the same data set, Capital Bikeshare have the ability to locate their least popular stations around the country. They can then choose to reduce the number of bikes and docking stations at these locations or remove the station entirely as it may not be economically efficient for these stations to exist.
+
+```{r, eval = TRUE, echo = FALSE, results = "hold", warning = FALSE, fig.height = 6, fig.width = 6, fig.show = "hold", fig.align = 'center'}
+
+rides_extract %>%
+  select("end_station_name", "duration_in_mins") %>%
+  group_by(end_station_name) %>%
+  count() %>%
+  filter(n > 16000) %>%
+  drop_na(end_station_name) %>%
+  ggplot(mapping = aes(x = end_station_name, y = n, na.rm = TRUE)) +
+  geom_col(colour = "black",
+           alpha = 1,
+           stat = "bin") +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(
+      angle = 90,
+      hjust = 1,
+      vjust = 0.5
+    )) +
+  labs(
+    x = "Most Popular End Stations",
+    y = "Number of Trips"
+  ) +
+  scale_y_continuous(breaks = pretty(0:30000))
+```
+
+1b) 
+
+The figure below plots the latitude against the latitude for each station at which a trip was started during 2020 (no data is available for 2019). While the previous discussion in 1a discussed the most popular stations, the figure below presents the most popular stations via the frequency of points around a certain location. Plotting the latitude and longitude of every trip makes the graph look more like a map of Washington D.C (see image) and its surrounding jurisdictions which CaBi operate in. The purploe outline in the image shows the range in which CaBi operates. As you can see, the shape of this purple section is very similar to the figure plotted. The heavily populated point in the figure is the center of Washington D.C, and as the data points thin out away from this point, there are fewer stations and fewer recorded trips, due to an increased distance from the city center. This is because CaBi are company who operates mainly in Washington, and due to an increased population closer to the city center, it is better to have majority of your business in that region.
+
+![CaBi Map](./figures/CaBi_map.jpg)
+
+```{r,  eval = TRUE, echo = FALSE, results = "hold", warning = FALSE, fig.height = 6, fig.width = 8, fig.show = "hold", fig.align = "center"}
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(year == 2020) %>%
+  select(start_lat, start_lng) %>%
+  drop_na(start_lat) %>%
+  drop_na(start_lng) %>%
+  ggplot(mapping = aes(x = start_lng, y = start_lat)) +
+  geom_point() +
+  theme_classic() +
+  labs(
+    x = "Longitude (degrees)",
+    y = "Latitude (degrees)"
+  )
+```
+
+## Question 2 Analysis
+
+The figure below consists of 2 plots, both of which measure the frequency of trips that have occurred within each month for the years 2019 (left graph) and 2020 (right graph). 
+
+During 2019, there was initially a relatively low number of users during January, where there were 48,125 recorded trips. However from March onwards, the number of users skyrocketed and reached its peak during September, where there were 115,743 recorded trips. The number of trips remained steady throughout the spring and summer seasons, until it dropped back down to 52,126 recorded trips in December. Being such a popular state with many events and tourist attractions, it makes sense that the number of trips would be high throughout summer, particularly in April where the Annual Cherry Blossom Festival occurs, as well as it being spring break for students in America; making it the busiest month in the entire year for tourism in Washington D.C. This graph makes use of meaningful data to foresee which months Capital Bikeshare can expect to be quite busy, and which months are likely to be more quiet, hence, allowing temporary shutdown of some stations and bikes.
+
+One would expect the data in 2020 to follow a similar trend to the data in 2019. However, this is not the case as the overall number of trips decreased year round. The key standout data point is the all-time low (highlighted) during April where there were only 23,608 recorded trips. This directly opposes the fact that April is the busiest month in the year for tourism in Washington D.C, hence, suggesting that the reason for this data point is due to external reasons. Having researched further, Capital Bikeshare had announced a response strategy to COVID-19 during March 2020 as they decided to temporarily close many bikeshare (docked and dockless) and e-scooter systems as well as some systems being permanently closed. It was also stated that all suspended systems would remain closed from March through to December 2020 (although they may have opened up docks sooner depending on the COVID-19 situation). This explains that despite being the most popular month for tourism, Capital Bikeshare had an all-time low (in the years 2019-2020) for recorded bike users as many bikes were unavailable, on top of national lock-downs carried out in response to COVID-19. Despite this setback for CaBi due to uncontrollable, external situations, CaBi recorded an increase in the number of trips throughout summer as COVID-19 regulations were easing, as they peaked with 79,033 recorded trips in August.
+
+Overall, the data between 2019 and 2020 followed a similar trend as traffic tends to increase between April to September due to tourism. It is important to note that the data for recorded trips in 2020 cannot be considered representative, nor can it be used to predict number of CaBi users over the following years due to the unique hardships presented by COVID-19 during this year.
+
+Source of Covid Response data: (https://data.bts.gov/stories/s/Effects-of-COVID-19-on-Bikeshare-Docked-and-Dockle/kar5-6dpn/)
+
+```{r, echo = FALSE, results = "hold", fig.height = 4, fig.width = 8, fig.align = 'center', fig.height = 4, fig.width = 8}
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  mutate(month = format(rides_extract$start_date, format = "%m")) %>%
+  mutate(month = parse_integer(month)) %>%
+  filter(year == 2019) %>%
+  group_by(month) %>%
+  arrange(month) %>%
+  count() %>%
+  ggplot(mapping = aes(x = month, y = n)) +
+  geom_point() -> q
+
+qq <- q + geom_line() +
+  scale_x_continuous(breaks = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)) +
+  scale_y_continuous(breaks = pretty(40000:120000)) +
+  theme_classic() +
+  labs(
+    x = "Months (in 2019)",
+    y = "Number of Trips"
+  )
+###############################################################################
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  mutate(month = format(rides_extract$start_date, format = "%m")) %>%
+  mutate(month = parse_integer(month)) %>%
+  select(month, year) %>%
+  filter(year == 2020) %>%
+  group_by(month) %>%
+  arrange(month) %>%
+  count() %>%
+  ggplot(mapping = aes(x = month, y = n)) +
+  geom_point() -> p
+
+pp <- p + geom_line() +
+  scale_x_continuous(breaks = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)) +
+  scale_y_continuous(breaks = pretty(20000:80000)) +
+  theme_classic() +
+  labs(
+    x = "Months (in 2020)",
+    y = "Number of Trips"
+  )
+pp +
+  annotate(
+    geom = "text",
+    x = 8.7, y = 25000,
+    label = "Month with the least trips",
+    colour = "red"
+  ) +
+  annotate(
+    geom = "point",
+    x = 4, y = 23608,
+    colour = "red",
+    shape = 21,
+    size = 2,
+    stroke = 1.3
+  ) -> ppp
+###############################################################################
+figure <- ggarrange(qq, ppp)
+figure
+```
+
+
+## Question 3 Analysis
+
+The cumulative frequency graph below presents the number of trips that last for a specific duration of time during 2019 and 2020 for casual riders of CaBi bikes. Initially, the rate of increase in frequency of trips increases at a very rapid rate, as  trip duration increases, up until approximately 30 minutes for both 2019 and 2020. The number of trips that lasted for longer than 30 minutes was considerably lower, as can be seen through the gradient decreasing for each line in the figure. The graphs begin to plateau after 30 minutes as fewer users have recorded trips beyond 30 minutes.
+
+The number of casual trips with a duration of 30 minutes or less was 86743 and 173055 in years 2019 and 2020 respectively.
+
+While both 2019 and 2020 follow a very similar trend, the data clearly shows that 2020 had almost double the recorded trips of 2019, indicating that CaBi had gained a large quantity of casual riders in 2020. Due to COVID-19 situations, a lot of the stations were closed down as discussed in Section 4.2. Due to this, it is likely that a lot of the core CaBi bike users had cancelled their membership as it was not economically beneficial for them as individuals, hence, these ex-members were converted into casual users in 2020. This will be discussed further in the analysis for the next figure. 
+
+Ultimately, looking solely at this figure, CaBi would assume that this is a positive sign as they have gained more casual users. However, coupled with the figure for 'Membership riders', it is evident this is not the case.
+```{r, , eval = FALSE, echo = FALSE, results = "hide", fig.align = 'center'}
+
+# Basis for Casual Members over 2019 and 2020
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 0 & member_casual == "casual" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 10 & member_casual == "casual" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 20 & member_casual == "casual" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 30 & member_casual == "casual" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 40 & member_casual == "casual" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 50 & member_casual == "casual" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 60 & member_casual == "casual" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins > 60 & member_casual == "casual" & year == 2019) %>%
+  summarise(n_of_rides = n())
+###############################################################################
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 0 & member_casual == "casual" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 10 & member_casual == "casual" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 20 & member_casual == "casual" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 30 & member_casual == "casual" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 40 & member_casual == "casual" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 50 & member_casual == "casual" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 60 & member_casual == "casual" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins > 60 & member_casual == "casual" & year == 2020) %>%
+  summarise(n_of_rides = n())
+```
+
+```{r, eval = TRUE, echo = FALSE, results = "hold", fig.align = 'center', fig.height = 4, fig.width = 6}
+# values have been obtained from previous chunk
+my_tbl3a <- tibble(
+  a = c(0, 10, 20, 30, 40, 50, 60),
+  b = c(0, 16938, 54427, 86743, 101887, 110650, 117182),
+  c = c(0, 47782, 120056, 173055, 197219, 212007, 223770)
+)
+
+my_tbl3a %>%
+  ggplot(mapping = aes(x = a, y = b)) +
+  geom_point() -> qq
+
+qq +
+  geom_point(mapping = aes(x = a, y = c)) +
+  geom_line(mapping = aes(x = a, y = b, colour = "2019")) +
+  geom_line(mapping = aes(x = a, y = c, colour = "2020")) +
+  theme_classic() +
+  labs(
+    x = "Duration of trips (Minutes)",
+    y = "Cumulative Frequency",
+    title = "Casual riders"
+  ) +
+  scale_x_continuous(breaks = c(0, 10, 20, 30, 40, 50, 60))
+```
+
+The figure below expresses the same contents as the figure above, however, it provides the data for membership riders over 2019 and 2020. Again, majority of the recorded trips have a duration of time less than 30 minutes (for both 2019 and 2020), as the gradient of each line is much steeper before the duration is 30 minutes. This is logical as most people who are using the bike to carry out a function will not need the bike for prolonged periods of time, else they may opt for an alternative method of transport or buy their own bike. Similar to the previous figure, after 30 minutes, the 'curves' plateau as number of trips decreases, hence decreasing the gradient of the curve slowly to zero.
+
+The number of member trips with a duration of 30 minutes or less was 897456 and 409908 in years 2019 and 2020 respectively.
+
+Comparing the data for both 2019 and 2020, the number of recorded trips by members dropped significantly; the direct opposite of what happened to the number of casual users. These trends are not mutually exclusive as the number of casual riders increasing can directly be related to the number of membership riders who had cancelled their membership, yet continued to use the CaBi services as a 'Casual'. This is a huge loss for CaBi as they lose the upfront revenue from users buying the membership deals.
+
+The importance of this data is that it shows how long CaBi bike trips typically last, allowing CaBi to then implement different pricing structures and membership plans in a way that they can pull in more customers and maximise profitability. This is exactly what happened during 2021 as CaBi announced a new membership plan which had an upgraded perk. As seen in the figures, the number of membership trips significantly dropped, indicating a large loss in the number of members. As this was a huge loss for CaBi, they implemented a change. Initially, a member would get up to a 30 minute bike ride for free, however, in an attempt to make the membership seem more desirable to users, this was changed to free bike rides for up to 45 minutes with a membership plan. While this would seem like a big change in the eyes of a customer, drawing them towards the 'better' option of being a member rather than a casual rider; the CaBi data and figures would suggest it is not as good as it seems. As seen in the figures, most of the trips recorded by both members and non-members lasted under 30 minutes, after which there are fewer recorded trips, which meant that this 15 minute additional free time for the bikes does not harm CaBi too much, as they are aware that despite this change, most of the bike riders will still not exceed the 30 minute mark as the figure suggests. This was an extremely smart move by CaBi as it draws in more users to the membership option as they believe they are getting a better deal, yet operational/maintenance cost for CaBi will remain relatively similar as majority of the trips will still have a duration of 30 minutes or less.
+
+```{r, eval = FALSE, echo = FALSE, results = "hide", fig.align = 'center'}
+
+# Basis for Members over 2019 and 2020
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 0 & member_casual == "member" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 10 & member_casual == "member" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 20 & member_casual == "member" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 30 & member_casual == "member" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 40 & member_casual == "member" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 50 & member_casual == "member" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 60 & member_casual == "member" & year == 2019) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins > 60 & member_casual == "member" & year == 2019) %>%
+  summarise(n_of_rides = n())
+###############################################################################
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 0 & member_casual == "member" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 10 & member_casual == "member" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 20 & member_casual == "member" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 30 & member_casual == "member" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 40 & member_casual == "member" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 50 & member_casual == "member" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins < 60 & member_casual == "member" & year == 2020) %>%
+  summarise(n_of_rides = n())
+
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(duration_in_mins > 60 & member_casual == "member" & year == 2020) %>%
+  summarise(n_of_rides = n())
+```
+
+```{r, eval = TRUE, echo = FALSE, results = "hold", fig.align = 'center', fig.height = 4, fig.width = 6}
+# values have been obtained from previous chunk
+my_tbl3b <- tibble(
+  a = c(0, 10, 20, 30, 40, 50, 60),
+  b = c(0, 199783, 348841, 409908, 422465, 427804, 431552),
+  c = c(0, 460180, 781935, 897456, 920727, 929710, 935262)
+)
+
+my_tbl3b %>%
+  ggplot(mapping = aes(x = a, y = b)) +
+  geom_point() -> tt
+
+tt +
+  geom_point(mapping = aes(x = a, y = c)) +
+  geom_line(mapping = aes(x = a, y = b, colour = "2020")) +
+  geom_line(mapping = aes(x = a, y = c, colour = "2019")) +
+  theme_classic() +
+  labs(
+    x = "Duration of trips (Minutes)",
+    y = "Cumulative Frequency",
+    title = "Membership riders"
+  ) +
+  scale_x_continuous(breaks = c(0, 10, 20, 30, 40, 50, 60))
+
+```
+
+## Question 4 Analysis
+```{r, eval = TRUE, echo = FALSE, results = "hide", fig.height = 4, fig.width = 8, fig.align = 'center'}
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(rideable_type == "classic_bike") %>%
+  summarise(
+    n_classic_bikes_trips = n(),
+    total_duration_hrs = (sum(duration_in_mins) / 60),
+    avg_duration_mins = ((total_duration_hrs / n_classic_bikes_trips) * 60)
+  )
+###  
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(rideable_type == "docked_bike") %>%
+  summarise(
+    n_docked_bike_trips = n(),
+    total_duration_hrs = (sum(duration_in_mins) / 60),
+    avg_duration_mins = ((total_duration_hrs / n_docked_bike_trips) * 60)
+  )
+###
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(rideable_type == "electric_bike") %>%
+  summarise(
+    n_el_bike_trips = n(),
+    total_duration_hrs = (sum(duration_in_mins) / 60),
+    avg_duration_mins = ((total_duration_hrs / n_el_bike_trips) * 60)
+  )
+```
+
+The figure (right side) below shows the number of trips recorded for each bike type. CaBi have a range of 3 rideable bike types, although their most popular and frequently used is the docked bikes. This bar graph shows the number of trips that were carried out using each bike type throughout 2020. It is clear that CaBi have invested most their resources into maximising the number of docked bikes available. This is because docked bikes provide an additional layer of security for the bike, as it requires the bike user to return the bike to a dock, or risk being charged. Classic bikes do not require the user to drop off the bike at a docking station, providing less security for the bike as it is more susceptible to robberies or damages. The reason for such a large number of trips being solely docked bikes is likely due the fact that most CaBi bikes are docked bikes, with a small minority being electric bikes, and an even smaller minority being classic bikes (although these will probably be phased out). The number of trips recorded using electric bikes is still relatively high considering it is less available and costs more to undock and use (following CaBi pricing structures). This indicates that there is a growing popularity in the usage of electric bikes, hence CaBi could implement more into their bike spaces. 
+
+The figure (left side) below also shows the total duration of all trips carried out in 2020 for each bike type. Again, the data follows a very similar trend as due to there being primarily docked bikes available, most trips will be carried out on docked bikes, hence there will be a greater total duration in hours for docked bikes. 
+
+```{r, eval = TRUE, echo = FALSE, results = "hold", fig.height = 4, fig.width = 8, fig.align = 'center'}
+
+my_tbl4 <- tibble(
+  a = c("classic_bike", "docked_bike", "electric_bike"),
+  b = c(4704, 309456, 25970)) # values obtained from previous chunk
+
+my_tbl4 %>%
+  ggplot(mapping = aes(x = a, y = b)) +
+  geom_col(colour = "black",
+           alpha = 1) +
+  theme_classic() +
+  labs(
+    x = "Type of bike",
+    y = "Total duration (hrs)"
+  ) -> ddd
+###############################################################################
+rides_extract %>%
+  mutate(year = format(rides_extract$start_date, format = "%Y")) %>%
+  mutate(year = parse_double(year)) %>%
+  filter(year == 2020) %>%
+  group_by(rideable_type) %>%
+  arrange(rideable_type) %>%
+  drop_na(rideable_type) %>%
+  count() %>%
+  ggplot(mapping = aes(x = rideable_type, y = n)) +
+  geom_col(colour = "black",
+           alpha = 1,
+           na.rm = TRUE) +
+  theme_classic() +
+  labs(
+    x = "Type of Bike",
+    y = "Number of Trips"
+  ) -> eee
+###############################################################################
+figure4 <- ggarrange(ddd, eee)
+figure4
+```
+
+These figures alone are not very useful in comparing the bike types as the number of each bike available is a large driving factor in the variables. Instead, the average duration of each trip can be compared for each bike type.
+
+The figure below calculates the average duration (in minutes) for which each recorded trip is carried out for, over the year 2020. This figure is more representative of each type of bike (compared to the figure above), allowing for better comparisons, in order to develop better company suggestions based on the results. The importance of the average trip duration can be emphasised by going over the pricing structure of CaBi. To summarise this, CaBi charge for bike usage per minute, so they would want to prioritise the bike type that provides the highest average trip duration. It is also more expensive to undock and ride an electric bike compared to a docked bike. The figure shows that the biketype with the highest average duration (of 42.39 mins) is the docked bike. This was to be expected as it is the cheaper, easier option. Most people will not use an electric bike to travel for long periods of time (due to higher undocking cost and cost per minute), rather it will mostly be used for leisurely strolls, hence, the average trip duration is only 20.94 minutes.
+
+To conclude, the figures (and data) are extremely meaningful for CaBi as it guides them in understanding what the most popular bike type is, so they can choose to add more docked bikes to the systems, remove more classic bikes, and perhaps even increase the number of electric bikes as they become increasingly popular over time in order to maximise company revenue and resource efficiency.
+
+It is important to note that the type of bike being ridden was not a variable being measured in 2019, preventing annual comparisons for the performance rate of each bike.
+
+```{r, eval = TRUE, echo = FALSE, results = "hold", fig.height = 4, fig.width = 6, fig.align = 'center'}
+mytbl4b <- tibble(
+  a = c("Classic", "Docked", "Electric"),
+  b = c(18.11, 42.39, 20.94) # values obtained from chunk 11 table.
+)
+
+mytbl4b %>% 
+  ggplot(mapping = aes(x = a, y = b)) +
+  geom_col(colour = "black",
+           alpha = 1,
+           na.rm = TRUE) +
+  theme_classic() +
+  labs(
+    x = "Type of Bike",
+    y = "Average Trip Duration (mins)"
+  )
+```
+
+## Question 5 Analysis
+
+The figure below presents the number of trips carried out by both members and casual riders, split between the years 2019 and 2020. It is evident that there has been an increase in casual trips between 2019 and 2020, with an increase of 119,825 more trips recorded in 2020. While this is a positive statistic for Capital Bikeshare, this gain is minimal in comparison to the loss of member trips between 2019 and 2020, as there was a decrease of 510,342 trips. This could be considered a major loss as a lower number of member trips indicates that a large proportion of members had cancelled their membership and left Capital Bikeshare, or were simply using the bikes less frequently.
+
+This graph perfectly represents how data guides a company, as in 2021, Capital Bikeshare updated their membership perks, allowing members to travel up to 45 minutes free (in comparison to travelling up to 30 minutes free in 2020), in an attempt to draw more users to the memberships. Capital Bikeshare had recognised that their current business strategy was not sufficient, hence, they revised their business plan in order to maintain company integrity.
+
+```{r, echo = FALSE, results = "hold", fig.height = 4, fig.width = 6, fig.align = 'center'}
+
+rides_extract$start_date <- format(rides_extract$start_date, format = "%Y")
+# above line only obtains the year value from the start_date column.
+
+num_of_members_in_2019 <- rides_extract %>%
+  filter(member_casual == "member" & start_date == 2019) %>%
+  count()
+
+num_of_members_in_2020 <- rides_extract %>%
+  filter(member_casual == "member" & start_date == 2020) %>%
+  count()
+
+num_of_casuals_in_2019 <- rides_extract %>%
+  filter(member_casual == "casual" & start_date == 2019) %>%
+  count()
+
+num_of_casuals_in_2020 <- rides_extract %>%
+  filter(member_casual == "casual" & start_date == 2020) %>%
+  count()
+
+my_tbl <- tibble(
+  a = c("Members", "Members", "Casuals", "Casuals"),
+  b = c(num_of_members_in_2019, num_of_members_in_2020,
+        num_of_casuals_in_2019, num_of_casuals_in_2020),
+  d = c(2019, 2020, 2019, 2020)
+)
+
+p<- my_tbl %>%
+  ggplot(mapping = aes(x = a, y = b, colour = d)) +
+  geom_col(colour = "black",
+           alpha = 1
+           ) +
+  facet_wrap(facets = vars(d))
+
+p + labs(
+  x = "Bike User type",
+  y = "Number of trips"
+) +
+  theme_classic()
+```
+
+# Conclusion
+
+The results and analyses carried out give an in depth insight into the performance of Capital Bikeshare on a year to year basis. While the initial data set may seem useless, after tidying the data and filtering out key variables to show trends, one can obtain many different conclusions on CaBi over the years. While the timeframe (2019-2020) for this analysis was not in Capital Bikeshares favour (due to COVID-19 harming the business in 2020), comparing annual data can guide the company forward to implement the correct changes in order for the business to always keep growing (as is the goal for any business). The analyses carried out in this report suggest that CaBi had a very tough year in 2020 as they performed worse than they did in 2019, losing approximately 510,000 recorded trips from members and approximately 300,000 trips less in total. This data would definitely be alarming within CaBi headquarters, leading them to alter their business strategy (which they have done with the membership changes) in the following year to draw back customers.
+
+Some business suggestions upon the analysis are:
+
+1. Add more bike docks at the best performing stations, and expand the size of their best performing stations (such as Columbus Circle/Union Station).
+
+2. Remove the worst performing bike stations as these are most probably not economically efficient for the company to maintain.
+
+3. Remove the presence of dockless biking, so that it is mandatory for bikes to be docked, as this will increase bike security and bike life expectancy.
+
+4. Revise membership plans so that it seems more desirable to the public (which they have done in 2021 - after the data set analysis).
+
+5. Have seasonal offers in summer months as there is a large influx of customers due to tourism, and this can be capitalised on.
+
+While the analysis covers a large range of data and findings, it leads to a range of further questions that cannot be looked into with the given data set. Some further questions that are worth looking into upon this analysis is:
+
+1. How many users are actually members and casual riders for CaBi every year?
+
+(This is not specified in the data set but the scale of individuals can be inferred by the number of recorded trips by members and casual riders)
+
+2. How do CaBi manage the opening and closing of particular docks, depending on the time of year due to increased or decreased demand for the bikes? i.e. how many docks are open and closed throughout the year?
+
+(This question looks for insight into how CaBi start up and shut down docks in summer compared to winter, as some docks are likely shut in winter due to less usage of bikes, or all docks are open during summer due to high tourism)
+
+3. What is the income for each recorded trip? 
+
+(This can be based on whether the individual is a member or a casual rider, and whether the trip is on an electric bike or a docked bike)
+
+The relevance of this is that income is a direct measure of company success, as a company should look to drive up profit margins every year to continue growing as a business.
+
+
+
+
+
+
