@@ -9,3 +9,11 @@ The goal of this project was to look at the raw data, and obtain 5 interesting r
 The operationalised research questions are answered by making use of a clean dataset to create several meaningful visualisations which support any evaluations made.
 
 Note: The 'rides_2019_2020_extract' dataset is also used in this project, however cannot be uploaded onto Github due to its size. To run the R code for this project, ensure this dataset is obtained and saved into the 'data' folder. Else, view the html file created which is the final output for the project.
+
+To view the rendered html file, open this site: 
+
+https://htmlpreview.github.io/
+
+and enter the following file directory:
+
+https://github.com/mp1610/Capital_Bikeshare/blob/main/Coursework/coursework.html
